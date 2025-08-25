@@ -1,88 +1,99 @@
 import streamlit as st
 import plotly.graph_objects as go
+import math
 
 st.set_page_config(layout="wide")
-st.title("🛠️ Plano de Arneses Eléctricos")
+st.title("🛠️ Plano Interactivo de Arneses Eléctricos")
 
-# Espacio para barra de estado
-status = st.empty()
-
-# Datos temporales
+# Inicializar estado
+if "nodos" not in st.session_state:
+    st.session_state.nodos = []  # Lista de dicts: {"nombre", "tipo", "x", "y"}
 if "ramales" not in st.session_state:
-    st.session_state.ramales = []
+    st.session_state.ramales = []  # Lista de dicts: {"origen", "destino", "dimension"}
+if "conector_origen" not in st.session_state:
+    st.session_state.conector_origen = None
 
-# Formulario para agregar ramal
+# Parámetros de entrada
 with st.sidebar:
-    st.header("➕ Agregar Ramal")
-    origen = st.text_input("Nombre del Conector (origen)", "C1")
+    st.header("➕ Configurar Ramal")
     tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"])
     nombre_destino = st.text_input("Nombre del destino", "SPL1" if tipo_destino == "SPL" else "C2")
-    x1 = st.number_input("X origen", value=100)
-    y1 = st.number_input("Y origen", value=300)
-    x2 = st.number_input("X destino", value=300)
-    y2 = st.number_input("Y destino", value=300)
     dimension = st.number_input("Dimensión (mm)", value=100)
 
-    if st.button("Agregar línea"):
-        st.session_state.ramales.append({
-            "origen": origen,
-            "destino": nombre_destino if tipo_destino != "BRK" else "BRK",
-            "tipo": tipo_destino,
-            "dimension": dimension,
-            "coords": [(x1, y1), (x2, y2)]
-        })
-        status.success(f"Línea agregada: {origen} → {nombre_destino} ({dimension} mm)")
+# Función para encontrar nodo más cercano
+def encontrar_nodo_cercano(x, y, radio=30):
+    for nodo in st.session_state.nodos:
+        dist = math.hypot(nodo["x"] - x, nodo["y"] - y)
+        if dist <= radio:
+            return nodo
+    return None
+
+# Captura de clic
+clicked_point = st.experimental_data_editor({"x": [], "y": []}, num_rows="dynamic", use_container_width=True)
+
+if clicked_point["x"] and clicked_point["y"]:
+    x = clicked_point["x"][-1]
+    y = clicked_point["y"][-1]
+
+    if st.session_state.conector_origen is None:
+        # Primer clic: crear Conector origen
+        st.session_state.conector_origen = "C1"
+        st.session_state.nodos.append({"nombre": "C1", "tipo": "Conector", "x": x, "y": y})
+        st.success("Conector origen 'C1' creado")
+    else:
+        # Buscar nodo cercano como origen
+        nodo_origen = encontrar_nodo_cercano(x, y)
+        if nodo_origen:
+            # Crear destino
+            nombre = nombre_destino if tipo_destino != "BRK" else "BRK"
+            st.session_state.nodos.append({"nombre": nombre, "tipo": tipo_destino, "x": x, "y": y})
+            st.session_state.ramales.append({
+                "origen": nodo_origen["nombre"],
+                "destino": nombre,
+                "dimension": dimension
+            })
+            st.success(f"Línea creada: {nodo_origen['nombre']} → {nombre} ({dimension} mm)")
+        else:
+            st.warning("Haz clic cerca de un nodo existente para conectar")
 
 # Dibujo del plano
 fig = go.Figure()
 
-# Dibujar cada ramal
+# Dibujar ramales
 for ramal in st.session_state.ramales:
-    x1, y1 = ramal["coords"][0]
-    x2, y2 = ramal["coords"][1]
+    origen = next(n for n in st.session_state.nodos if n["nombre"] == ramal["origen"])
+    destino = next(n for n in st.session_state.nodos if n["nombre"] == ramal["destino"])
+    x1, y1 = origen["x"], origen["y"]
+    x2, y2 = destino["x"], destino["y"]
 
-    # Línea
+    # Punto medio para la dimensión
+    xm = (x1 + x2) / 2
+    ym = (y1 + y2) / 2
+
     fig.add_trace(go.Scatter(
         x=[x1, x2], y=[y1, y2],
-        mode="lines+text",
+        mode="lines",
         line=dict(color="gray", width=2),
-        text=[None, f'{ramal["dimension"]} mm'],
+        hoverinfo="none"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[xm], y=[ym],
+        mode="text",
+        text=[f'{ramal["dimension"]} mm'],
         textposition="top center",
         hoverinfo="none"
     ))
 
-    # Nodo destino
-    if ramal["tipo"] == "Conector":
-        fig.add_trace(go.Scatter(
-            x=[x2], y=[y2],
-            mode="markers+text",
-            marker=dict(symbol="square", size=14, color="blue"),
-            text=[ramal["destino"]],
-            textposition="bottom center"
-        ))
-    elif ramal["tipo"] == "SPL":
-        fig.add_trace(go.Scatter(
-            x=[x2], y=[y2],
-            mode="markers+text",
-            marker=dict(symbol="triangle-up", size=14, color="green"),
-            text=[ramal["destino"]],
-            textposition="bottom center"
-        ))
-    elif ramal["tipo"] == "BRK":
-        fig.add_trace(go.Scatter(
-            x=[x2], y=[y2],
-            mode="markers",
-            marker=dict(symbol="circle", size=14, color="black")
-        ))
-
-# Nodo origen (siempre Conector)
-for ramal in st.session_state.ramales:
-    x1, y1 = ramal["coords"][0]
+# Dibujar nodos
+for nodo in st.session_state.nodos:
+    simbolo = {"Conector": "square", "SPL": "triangle-up", "BRK": "circle"}[nodo["tipo"]]
+    color = {"Conector": "blue", "SPL": "green", "BRK": "black"}[nodo["tipo"]]
     fig.add_trace(go.Scatter(
-        x=[x1], y=[y1],
+        x=[nodo["x"]], y=[nodo["y"]],
         mode="markers+text",
-        marker=dict(symbol="square", size=14, color="blue"),
-        text=[ramal["origen"]],
+        marker=dict(symbol=simbolo, size=14, color=color),
+        text=[nodo["nombre"] if nodo["tipo"] != "BRK" else ""],
         textposition="bottom center"
     ))
 
