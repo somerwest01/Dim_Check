@@ -1,57 +1,98 @@
 import streamlit as st
-import networkx as nx
-import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
-st.title("🛠️ Calculador de rutas para arneses eléctricos")
+st.set_page_config(layout="wide")
+st.title("🛠️ Plano de Arneses Eléctricos")
 
-# Crear grafo vacío
-G = nx.Graph()
+# Espacio para barra de estado
+status = st.empty()
 
-# Añadir conectores y ramales manualmente
-ramales = {
-    ("A", "B"): 120,
-    ("B", "C"): 80,
-    ("C", "D"): 100,
-    ("A", "D"): 150
-}
+# Datos temporales
+if "ramales" not in st.session_state:
+    st.session_state.ramales = []
 
-# Construir grafo
-for (n1, n2), distancia in ramales.items():
-    G.add_edge(n1, n2, weight=distancia)
+# Formulario para agregar ramal
+with st.sidebar:
+    st.header("➕ Agregar Ramal")
+    origen = st.text_input("Nombre del Conector (origen)", "C1")
+    tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"])
+    nombre_destino = st.text_input("Nombre del destino", "SPL1" if tipo_destino == "SPL" else "C2")
+    x1 = st.number_input("X origen", value=100)
+    y1 = st.number_input("Y origen", value=300)
+    x2 = st.number_input("X destino", value=300)
+    y2 = st.number_input("Y destino", value=300)
+    dimension = st.number_input("Dimensión (mm)", value=100)
 
-# Dibujar grafo
-pos = nx.spring_layout(G)
-nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=1000)
-labels = nx.get_edge_attributes(G, 'weight')
-nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
-st.pyplot(plt)
+    if st.button("Agregar línea"):
+        st.session_state.ramales.append({
+            "origen": origen,
+            "destino": nombre_destino if tipo_destino != "BRK" else "BRK",
+            "tipo": tipo_destino,
+            "dimension": dimension,
+            "coords": [(x1, y1), (x2, y2)]
+        })
+        status.success(f"Línea agregada: {origen} → {nombre_destino} ({dimension} mm)")
 
-# Subir archivo Excel
-archivo = st.file_uploader("📥 Cargar archivo Excel con circuitos", type=["xlsx"])
-if archivo:
-    df = pd.read_excel(archivo)
-    st.write("📋 Circuitos cargados:")
-    st.dataframe(df)
+# Dibujo del plano
+fig = go.Figure()
 
-    resultados = []
-    for _, row in df.iterrows():
-        origen = row["Conector_origen"]
-        destino = row["Conector_destino"]
-        try:
-            ruta = nx.shortest_path(G, origen, destino, weight='weight')
-            longitud = sum(G[u][v]['weight'] for u, v in zip(ruta[:-1], ruta[1:]))
-            resultados.append({
-                "Circuito": f"{origen} → {destino}",
-                "Ruta": " → ".join(ruta),
-                "Longitud (mm)": longitud
-            })
-        except:
-            resultados.append({
-                "Circuito": f"{origen} → {destino}",
-                "Ruta": "No encontrada",
-                "Longitud (mm)": "Error"
-            })
+# Dibujar cada ramal
+for ramal in st.session_state.ramales:
+    x1, y1 = ramal["coords"][0]
+    x2, y2 = ramal["coords"][1]
 
-    st.write("📏 Resultados de cálculo:")
-    st.dataframe(pd.DataFrame(resultados))
+    # Línea
+    fig.add_trace(go.Scatter(
+        x=[x1, x2], y=[y1, y2],
+        mode="lines+text",
+        line=dict(color="gray", width=2),
+        text=[None, f'{ramal["dimension"]} mm'],
+        textposition="top center",
+        hoverinfo="none"
+    ))
+
+    # Nodo destino
+    if ramal["tipo"] == "Conector":
+        fig.add_trace(go.Scatter(
+            x=[x2], y=[y2],
+            mode="markers+text",
+            marker=dict(symbol="square", size=14, color="blue"),
+            text=[ramal["destino"]],
+            textposition="bottom center"
+        ))
+    elif ramal["tipo"] == "SPL":
+        fig.add_trace(go.Scatter(
+            x=[x2], y=[y2],
+            mode="markers+text",
+            marker=dict(symbol="triangle-up", size=14, color="green"),
+            text=[ramal["destino"]],
+            textposition="bottom center"
+        ))
+    elif ramal["tipo"] == "BRK":
+        fig.add_trace(go.Scatter(
+            x=[x2], y=[y2],
+            mode="markers",
+            marker=dict(symbol="circle", size=14, color="black")
+        ))
+
+# Nodo origen (siempre Conector)
+for ramal in st.session_state.ramales:
+    x1, y1 = ramal["coords"][0]
+    fig.add_trace(go.Scatter(
+        x=[x1], y=[y1],
+        mode="markers+text",
+        marker=dict(symbol="square", size=14, color="blue"),
+        text=[ramal["origen"]],
+        textposition="bottom center"
+    ))
+
+fig.update_layout(
+    width=1200,
+    height=700,
+    margin=dict(t=50, b=50),
+    showlegend=False,
+    xaxis=dict(visible=False),
+    yaxis=dict(visible=False)
+)
+
+st.plotly_chart(fig, use_container_width=True)
