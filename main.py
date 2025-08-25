@@ -13,13 +13,40 @@ if "ramales" not in st.session_state:
     st.session_state.ramales = []
 if "conector_origen" not in st.session_state:
     st.session_state.conector_origen = None
+if "modo_dibujo" not in st.session_state:
+    st.session_state.modo_dibujo = "manual"
 
-# Parámetros de entrada
-with st.sidebar:
-    st.header("➕ Configurar Ramal")
-    tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"])
-    nombre_destino = st.text_input("Nombre del destino", "SPL1" if tipo_destino == "SPL" else "C2")
-    dimension = st.number_input("Dimensión (mm)", value=100)
+# Formulario para primera línea
+if st.session_state.modo_dibujo == "manual":
+    with st.sidebar:
+        st.header("➕ Dibujar primera línea")
+        x1 = st.number_input("X origen (Conector)", value=100)
+        y1 = st.number_input("Y origen (Conector)", value=300)
+        tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"])
+        nombre_destino = st.text_input("Nombre del destino", "SPL1")
+        x2 = st.number_input("X destino", value=300)
+        y2 = st.number_input("Y destino", value=300)
+        dimension = st.number_input("Dimensión (mm)", value=100)
+
+        if st.button("Agregar primera línea"):
+            st.session_state.nodos.append({"nombre": "C1", "tipo": "Conector", "x": x1, "y": y1})
+            st.session_state.nodos.append({"nombre": nombre_destino, "tipo": tipo_destino, "x": x2, "y": y2})
+            st.session_state.ramales.append({
+                "origen": "C1",
+                "destino": nombre_destino,
+                "dimension": dimension
+            })
+            st.session_state.conector_origen = "C1"
+            st.session_state.modo_dibujo = "clic"
+            st.success("Primera línea creada. Ahora puedes continuar dibujando con clics.")
+
+# Formulario para siguientes líneas
+if st.session_state.modo_dibujo == "clic":
+    with st.sidebar:
+        st.header("➕ Dibujar siguientes líneas")
+        tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"])
+        nombre_destino = st.text_input("Nombre del destino", "SPL2")
+        dimension = st.number_input("Dimensión (mm)", value=100)
 
 # Función para encontrar nodo cercano
 def encontrar_nodo_cercano(x, y, radio=30):
@@ -36,40 +63,11 @@ fig.update_layout(
     height=700,
     margin=dict(t=50, b=50),
     showlegend=False,
-    dragmode="drawopenpath",
     xaxis=dict(range=[0, 1000], visible=False),
-    yaxis=dict(range=[0, 700], visible=False),
-    modebar=dict(remove=["zoom", "pan", "select", "lasso"])
+    yaxis=dict(range=[0, 700], visible=False)
 )
 
-# Capturar clic
-st.subheader("🖱️ Haz clic en el plano para colocar nodos")
-selected_points = plotly_events(fig, click_event=True, override_height=700)
-
-# Procesar clic
-if selected_points:
-    x = selected_points[0]["x"]
-    y = selected_points[0]["y"]
-
-    if st.session_state.conector_origen is None:
-        st.session_state.conector_origen = "C1"
-        st.session_state.nodos.append({"nombre": "C1", "tipo": "Conector", "x": x, "y": y})
-        st.success("Conector origen 'C1' creado")
-    else:
-        nodo_origen = encontrar_nodo_cercano(x, y)
-        if nodo_origen:
-            nombre = nombre_destino if tipo_destino != "BRK" else f"BRK{len(st.session_state.nodos)}"
-            st.session_state.nodos.append({"nombre": nombre, "tipo": tipo_destino, "x": x, "y": y})
-            st.session_state.ramales.append({
-                "origen": nodo_origen["nombre"],
-                "destino": nombre,
-                "dimension": dimension
-            })
-            st.success(f"Línea creada: {nodo_origen['nombre']} → {nombre} ({dimension} mm)")
-        else:
-            st.warning("Haz clic cerca de un nodo existente para conectar")
-
-# Redibujar nodos
+# Dibujar nodos
 for nodo in st.session_state.nodos:
     simbolo = {"Conector": "square", "SPL": "triangle-up", "BRK": "circle"}[nodo["tipo"]]
     color = {"Conector": "blue", "SPL": "green", "BRK": "black"}[nodo["tipo"]]
@@ -81,7 +79,7 @@ for nodo in st.session_state.nodos:
         textposition="bottom center"
     ))
 
-# Redibujar ramales
+# Dibujar ramales
 for ramal in st.session_state.ramales:
     origen = next(n for n in st.session_state.nodos if n["nombre"] == ramal["origen"])
     destino = next(n for n in st.session_state.nodos if n["nombre"] == ramal["destino"])
@@ -102,6 +100,30 @@ for ramal in st.session_state.ramales:
         textposition="top center",
         hoverinfo="none"
     ))
+
+# Capturar clic para siguientes líneas
+if st.session_state.modo_dibujo == "clic":
+    st.subheader("🖱️ Haz clic sobre un nodo existente para iniciar una nueva línea")
+    selected_points = plotly_events(fig, click_event=True, override_height=700)
+
+    if selected_points:
+        x = selected_points[0]["x"]
+        y = selected_points[0]["y"]
+        nodo_origen = encontrar_nodo_cercano(x, y)
+        if nodo_origen:
+            # Crear destino automáticamente desplazado
+            x2 = x + 100
+            y2 = y
+            nombre = nombre_destino if tipo_destino != "BRK" else f"BRK{len(st.session_state.nodos)}"
+            st.session_state.nodos.append({"nombre": nombre, "tipo": tipo_destino, "x": x2, "y": y2})
+            st.session_state.ramales.append({
+                "origen": nodo_origen["nombre"],
+                "destino": nombre,
+                "dimension": dimension
+            })
+            st.success(f"Línea creada: {nodo_origen['nombre']} → {nombre} ({dimension} mm)")
+        else:
+            st.warning("Haz clic cerca de un nodo existente para conectar")
 
 # Mostrar gráfico actualizado
 st.plotly_chart(fig, use_container_width=True)
