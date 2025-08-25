@@ -108,7 +108,7 @@ fig.update_layout(
 
 # Capturar clic
 if st.session_state.modo_dibujo:
-    selected = plotly_events(fig, click_event=True, override_height=700, config={"displayModeBar": False})
+    selected = plotly_events(fig, click_event=True, override_height=700)
     if selected:
         x = selected[0]["x"]
         y = selected[0]["y"]
