@@ -99,14 +99,12 @@ fig.update_layout(
     height=700,
     margin=dict(t=50, b=50),
     showlegend=False,
-    dragmode=False,  # Desactiva cualquier modo de interacción
+    dragmode=False,
     xaxis=dict(range=[0, 1000], visible=False),
-    yaxis=dict(range=[0, 700], visible=False),
-    modebar=dict(remove=[
-        "zoom", "pan", "select", "lasso", "autoScale2d", "resetScale2d",
-        "hoverClosestCartesian", "hoverCompareCartesian", "toggleSpikelines"
-    ])
+    yaxis=dict(range=[0, 700], visible=False)
 )
+
+st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 # Capturar clic
