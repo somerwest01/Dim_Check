@@ -36,8 +36,10 @@ fig.update_layout(
     height=700,
     margin=dict(t=50, b=50),
     showlegend=False,
+    dragmode="drawopenpath",
     xaxis=dict(range=[0, 1000], visible=False),
-    yaxis=dict(range=[0, 700], visible=False)
+    yaxis=dict(range=[0, 700], visible=False),
+    modebar=dict(remove=["zoom", "pan", "select", "lasso"])
 )
 
 # Capturar clic
