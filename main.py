@@ -13,8 +13,6 @@ if "ramales" not in st.session_state:
     st.session_state.ramales = []
 if "conector_origen" not in st.session_state:
     st.session_state.conector_origen = None
-if "ultimo_nodo" not in st.session_state:
-    st.session_state.ultimo_nodo = None
 
 # Parámetros de entrada
 with st.sidebar:
@@ -42,7 +40,34 @@ fig.update_layout(
     yaxis=dict(range=[0, 700], visible=False)
 )
 
-# Dibujar nodos
+# Capturar clic
+st.subheader("🖱️ Haz clic en el plano para colocar nodos")
+selected_points = plotly_events(fig, click_event=True, override_height=700)
+
+# Procesar clic
+if selected_points:
+    x = selected_points[0]["x"]
+    y = selected_points[0]["y"]
+
+    if st.session_state.conector_origen is None:
+        st.session_state.conector_origen = "C1"
+        st.session_state.nodos.append({"nombre": "C1", "tipo": "Conector", "x": x, "y": y})
+        st.success("Conector origen 'C1' creado")
+    else:
+        nodo_origen = encontrar_nodo_cercano(x, y)
+        if nodo_origen:
+            nombre = nombre_destino if tipo_destino != "BRK" else f"BRK{len(st.session_state.nodos)}"
+            st.session_state.nodos.append({"nombre": nombre, "tipo": tipo_destino, "x": x, "y": y})
+            st.session_state.ramales.append({
+                "origen": nodo_origen["nombre"],
+                "destino": nombre,
+                "dimension": dimension
+            })
+            st.success(f"Línea creada: {nodo_origen['nombre']} → {nombre} ({dimension} mm)")
+        else:
+            st.warning("Haz clic cerca de un nodo existente para conectar")
+
+# Redibujar nodos
 for nodo in st.session_state.nodos:
     simbolo = {"Conector": "square", "SPL": "triangle-up", "BRK": "circle"}[nodo["tipo"]]
     color = {"Conector": "blue", "SPL": "green", "BRK": "black"}[nodo["tipo"]]
@@ -54,7 +79,7 @@ for nodo in st.session_state.nodos:
         textposition="bottom center"
     ))
 
-# Dibujar ramales
+# Redibujar ramales
 for ramal in st.session_state.ramales:
     origen = next(n for n in st.session_state.nodos if n["nombre"] == ramal["origen"])
     destino = next(n for n in st.session_state.nodos if n["nombre"] == ramal["destino"])
@@ -76,31 +101,5 @@ for ramal in st.session_state.ramales:
         hoverinfo="none"
     ))
 
-# Capturar clic
-st.subheader("🖱️ Haz clic en el plano para colocar nodos")
-selected_points = plotly_events(fig, click_event=True, hover_event=False)
-
-if selected_points:
-    x = selected_points[0]["x"]
-    y = selected_points[0]["y"]
-
-    if st.session_state.conector_origen is None:
-        # Primer nodo: Conector origen
-        st.session_state.conector_origen = "C1"
-        st.session_state.nodos.append({"nombre": "C1", "tipo": "Conector", "x": x, "y": y})
-        st.session_state.ultimo_nodo = "C1"
-        st.success("Conector origen 'C1' creado")
-    else:
-        nodo_origen = encontrar_nodo_cercano(x, y)
-        if nodo_origen:
-            # Conectar desde nodo cercano
-            nombre = nombre_destino if tipo_destino != "BRK" else f"BRK{len(st.session_state.nodos)}"
-            st.session_state.nodos.append({"nombre": nombre, "tipo": tipo_destino, "x": x, "y": y})
-            st.session_state.ramales.append({
-                "origen": nodo_origen["nombre"],
-                "destino": nombre,
-                "dimension": dimension
-            })
-            st.success(f"Línea creada: {nodo_origen['nombre']} → {nombre} ({dimension} mm)")
-        else:
-            st.warning("Haz clic cerca de un nodo existente para conectar")
+# Mostrar gráfico actualizado
+st.plotly_chart(fig, use_container_width=True)
