@@ -4,7 +4,7 @@ from streamlit_plotly_events import plotly_events
 import math
 
 st.set_page_config(layout="wide")
-st.title("🛠️ Plano de Arneses Eléctricos")
+st.title("🛠️ Plano Interactivo de Arneses Eléctricos")
 
 # Estado inicial
 if "modo_dibujo" not in st.session_state:
@@ -27,13 +27,14 @@ with st.sidebar:
         tipo = st.selectbox("Tipo de objeto origen", ["Conector", "SPL", "BRK"])
         st.session_state.temp_origen["tipo"] = tipo
         if st.button("Confirmar origen"):
+            nombre = f"{tipo}{len(st.session_state.nodos)+1}"
+            st.session_state.temp_origen["nombre"] = nombre
             st.session_state.nodos.append({
-                "nombre": f"{tipo}{len(st.session_state.nodos)+1}",
+                "nombre": nombre,
                 "tipo": tipo,
                 "x": st.session_state.temp_origen["x"],
                 "y": st.session_state.temp_origen["y"]
             })
-            st.session_state.temp_origen["nombre"] = st.session_state.nodos[-1]["nombre"]
             st.session_state.fase_dibujo = "esperando_destino"
 
     elif st.session_state.modo_dibujo and st.session_state.fase_dibujo == "destino_tipo":
@@ -42,15 +43,16 @@ with st.sidebar:
         st.session_state.temp_origen["destino_tipo"] = tipo
         st.session_state.temp_origen["dimension"] = dimension
         if st.button("Confirmar destino"):
+            nombre = f"{tipo}{len(st.session_state.nodos)+1}"
             st.session_state.nodos.append({
-                "nombre": f"{tipo}{len(st.session_state.nodos)+1}",
+                "nombre": nombre,
                 "tipo": tipo,
                 "x": st.session_state.temp_origen["dest_x"],
                 "y": st.session_state.temp_origen["dest_y"]
             })
             st.session_state.ramales.append({
                 "origen": st.session_state.temp_origen["nombre"],
-                "destino": st.session_state.nodos[-1]["nombre"],
+                "destino": nombre,
                 "dimension": dimension
             })
             st.session_state.fase_dibujo = "esperando_origen"
@@ -104,14 +106,9 @@ fig.update_layout(
     yaxis=dict(range=[0, 700], visible=False)
 )
 
-st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-
 # Capturar clic
 if st.session_state.modo_dibujo:
-    st.subheader("🖱️ Haz clic en el plano para colocar nodos")
-    selected = plotly_events(fig, click_event=True, override_height=700)
-
+    selected = plotly_events(fig, click_event=True, override_height=700, config={"displayModeBar": False})
     if selected:
         x = selected[0]["x"]
         y = selected[0]["y"]
@@ -124,4 +121,4 @@ if st.session_state.modo_dibujo:
             st.session_state.fase_dibujo = "destino_tipo"
 
 # Mostrar gráfico
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
