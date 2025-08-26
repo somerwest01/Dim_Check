@@ -1,3 +1,4 @@
+
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 import math
@@ -35,50 +36,49 @@ def distance(p1, p2):
 # Procesar líneas dibujadas
 if canvas_result.json_data is not None:
     objects = canvas_result.json_data.get("objects", [])
-    if objects:
-        last_obj = objects[-1]
-        if last_obj["type"] == "line":
-            x1, y1 = last_obj["x1"], last_obj["y1"]
-            x2, y2 = last_obj["x2"], last_obj["y2"]
+    new_lines = []
+    for obj in objects:
+        if obj["type"] == "line":
+            x1, y1 = obj["x1"], obj["y1"]
+            x2, y2 = obj["x2"], obj["y2"]
 
             # Buscar extremo más cercano
             min_dist = float("inf")
             closest_point = None
+            connect_point = None
             for line in st.session_state.line_objects:
                 for pt in [line["start"], line["end"]]:
                     d1 = distance((x1, y1), pt)
-                    d2 = distance((x2, y2), pt)
                     if d1 < min_dist:
                         min_dist = d1
                         closest_point = pt
-                        connect_start = True
+                        connect_point = "start"
+                    d2 = distance((x2, y2), pt)
                     if d2 < min_dist:
                         min_dist = d2
                         closest_point = pt
-                        connect_start = False
+                        connect_point = "end"
 
             # Ajustar punto de conexión si hay uno cercano
             threshold = 20
             if min_dist < threshold:
-                if connect_start:
+                if connect_point == "start":
                     x1, y1 = closest_point
-                else:
+                elif connect_point == "end":
                     x2, y2 = closest_point
 
-            # Crear objeto línea con propiedades
+            # Solicitar dimensión
             line_id = len(st.session_state.line_objects)
             dimension = st.sidebar.text_input("Dimensión de la línea (mm)", key=f"dim_{line_id}")
-            tipo_inicio = st.sidebar.selectbox("Tipo de objeto de inicio", ["Item", "BRK", "SPL"], key=f"tipo_inicio_{line_id}")
-            tipo_fin = st.sidebar.selectbox("Tipo de objeto de destino", ["Item", "BRK", "SPL"], key=f"tipo_fin_{line_id}")
 
             new_line = {
                 "id": line_id,
                 "start": (x1, y1),
                 "end": (x2, y2),
-                "dimension": dimension,
-                "tipo_inicio": tipo_inicio,
-                "tipo_fin": tipo_fin
+                "dimension": dimension
             }
 
-            # Agregar línea al estado
-            st.session_state.line_objects.append(new_line)
+            new_lines.append(new_line)
+
+    # Actualizar estado con nuevas líneas
+    st.session_state.line_objects = new_lines
