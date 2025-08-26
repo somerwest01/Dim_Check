@@ -1,124 +1,69 @@
+
 import streamlit as st
-import plotly.graph_objects as go
-from streamlit_plotly_events import plotly_events
-import math
+from streamlit_drawable_canvas import st_canvas
 
-st.set_page_config(layout="wide")
-st.title("🛠️ Plano Interactivo de Arneses Eléctricos")
+st.set_page_config(page_title="Plano de Arnés Eléctrico", layout="wide")
 
-# Estado inicial
-if "modo_dibujo" not in st.session_state:
-    st.session_state.modo_dibujo = False
-if "fase_dibujo" not in st.session_state:
-    st.session_state.fase_dibujo = "esperando_origen"
-if "nodos" not in st.session_state:
-    st.session_state.nodos = []
-if "ramales" not in st.session_state:
-    st.session_state.ramales = []
-if "temp_origen" not in st.session_state:
-    st.session_state.temp_origen = {}
+if "lines" not in st.session_state:
+    st.session_state.lines = []
 
-# 🧭 Panel lateral
-with st.sidebar:
-    st.header("🔧 Herramientas")
-    st.session_state.modo_dibujo = st.checkbox("Activar modo dibujo", value=st.session_state.modo_dibujo)
+st.sidebar.title("Herramientas")
+add_line = st.sidebar.button("Agregar nueva línea")
 
-    if st.session_state.modo_dibujo and st.session_state.fase_dibujo == "origen_tipo":
-        tipo = st.selectbox("Tipo de objeto origen", ["Conector", "SPL", "BRK"])
-        st.session_state.temp_origen["tipo"] = tipo
-        if st.button("Confirmar origen"):
-            nombre = f"{tipo}{len(st.session_state.nodos)+1}"
-            st.session_state.temp_origen["nombre"] = nombre
-            st.session_state.nodos.append({
-                "nombre": nombre,
-                "tipo": tipo,
-                "x": st.session_state.temp_origen["x"],
-                "y": st.session_state.temp_origen["y"]
-            })
-            st.session_state.fase_dibujo = "esperando_destino"
+st.title("Plano de Arnés Eléctrico Automotriz")
+st.write("Haz clic en el área para definir los puntos de la línea.")
 
-    elif st.session_state.modo_dibujo and st.session_state.fase_dibujo == "destino_tipo":
-        tipo = st.selectbox("Tipo de objeto destino", ["Conector", "SPL", "BRK"])
-        dimension = st.number_input("Dimensión (mm)", value=100)
-        st.session_state.temp_origen["destino_tipo"] = tipo
-        st.session_state.temp_origen["dimension"] = dimension
-        if st.button("Confirmar destino"):
-            nombre = f"{tipo}{len(st.session_state.nodos)+1}"
-            st.session_state.nodos.append({
-                "nombre": nombre,
-                "tipo": tipo,
-                "x": st.session_state.temp_origen["dest_x"],
-                "y": st.session_state.temp_origen["dest_y"]
-            })
-            st.session_state.ramales.append({
-                "origen": st.session_state.temp_origen["nombre"],
-                "destino": nombre,
-                "dimension": dimension
-            })
-            st.session_state.fase_dibujo = "esperando_origen"
-            st.success("Línea dibujada correctamente")
-
-# 🖼️ Área de dibujo
-fig = go.Figure()
-
-# Dibujar nodos
-for nodo in st.session_state.nodos:
-    simbolo = {"Conector": "square", "SPL": "triangle-up", "BRK": "circle"}[nodo["tipo"]]
-    color = {"Conector": "blue", "SPL": "green", "BRK": "black"}[nodo["tipo"]]
-    fig.add_trace(go.Scatter(
-        x=[nodo["x"]], y=[nodo["y"]],
-        mode="markers+text",
-        marker=dict(symbol=simbolo, size=14, color=color),
-        text=[nodo["nombre"] if nodo["tipo"] != "BRK" else ""],
-        textposition="bottom center"
-    ))
-
-# Dibujar ramales
-for ramal in st.session_state.ramales:
-    origen = next(n for n in st.session_state.nodos if n["nombre"] == ramal["origen"])
-    destino = next(n for n in st.session_state.nodos if n["nombre"] == ramal["destino"])
-    x1, y1 = origen["x"], origen["y"]
-    x2, y2 = destino["x"], destino["y"]
-    xm, ym = (x1 + x2) / 2, (y1 + y2) / 2
-
-    fig.add_trace(go.Scatter(
-        x=[x1, x2], y=[y1, y2],
-        mode="lines",
-        line=dict(color="gray", width=2),
-        hoverinfo="none"
-    ))
-    fig.add_trace(go.Scatter(
-        x=[xm], y=[ym],
-        mode="text",
-        text=[f'{ramal["dimension"]} mm'],
-        textposition="top center",
-        hoverinfo="none"
-    ))
-
-# Configuración del gráfico
-fig.update_layout(
-    width=1200,
-    height=700,
-    margin=dict(t=50, b=50),
-    showlegend=False,
-    dragmode=False,
-    xaxis=dict(range=[0, 1000], visible=False),
-    yaxis=dict(range=[0, 700], visible=False)
+canvas_result = st_canvas(
+    fill_color="rgba(0, 0, 0, 0.3)",
+    stroke_width=2,
+    stroke_color="#000000",
+    background_color="#ffffff",
+    update_streamlit=True,
+    height=600,
+    width=1000,
+    drawing_mode="freedraw" if add_line else "transform",
+    key="canvas",
 )
 
-# Capturar clic
-if st.session_state.modo_dibujo:
-    selected = plotly_events(fig, click_event=True, override_height=700)
-    if selected:
-        x = selected[0]["x"]
-        y = selected[0]["y"]
-        if st.session_state.fase_dibujo == "esperando_origen":
-            st.session_state.temp_origen = {"x": x, "y": y}
-            st.session_state.fase_dibujo = "origen_tipo"
-        elif st.session_state.fase_dibujo == "esperando_destino":
-            st.session_state.temp_origen["dest_x"] = x
-            st.session_state.temp_origen["dest_y"] = y
-            st.session_state.fase_dibujo = "destino_tipo"
+def draw_symbol(x, y, tipo):
+    if tipo == "Item":
+        st.write(f"🟥 Cuadrado en ({x}, {y})")
+    elif tipo == "BRK":
+        st.write(f"⚫ Círculo negro en ({x}, {y})")
+    elif tipo == "SPL":
+        st.write(f"🔺 Triángulo en ({x}, {y})")
 
-# Mostrar gráfico
-st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+if add_line:
+    st.subheader("Paso 1: Selecciona el punto de partida")
+    x1 = st.number_input("X del punto de partida", min_value=0, max_value=1000, value=100)
+    y1 = st.number_input("Y del punto de partida", min_value=0, max_value=600, value=100)
+    tipo_inicio = st.selectbox("Tipo de objeto de inicio", ["Item", "BRK", "SPL"])
+
+    st.subheader("Paso 2: Selecciona el punto destino")
+    x2 = st.number_input("X del punto destino", min_value=0, max_value=1000, value=400)
+    y2 = st.number_input("Y del punto destino", min_value=0, max_value=600, value=300)
+    dimension = st.text_input("Dimensión de la línea (ej. 25cm)")
+    tipo_fin = st.selectbox("Tipo de objeto de destino", ["Item", "BRK", "SPL"])
+
+    if st.button("Dibujar línea"):
+        xm = (x1 + x2) / 2
+        ym = (y1 + y2) / 2
+
+        st.session_state.lines.append({
+            "inicio": (x1, y1),
+            "fin": (x2, y2),
+            "tipo_inicio": tipo_inicio,
+            "tipo_fin": tipo_fin,
+            "dimension": dimension
+        })
+
+        st.success("Línea agregada correctamente")
+        st.write(f"🔹 Línea de ({x1}, {y1}) a ({x2}, {y2}) con dimensión {dimension}")
+        draw_symbol(x1, y1, tipo_inicio)
+        draw_symbol(x2, y2, tipo_fin)
+        st.write(f"📏 Dimensión mostrada en ({xm}, {ym})")
+
+if st.session_state.lines:
+    st.subheader("Líneas dibujadas")
+    for i, line in enumerate(st.session_state.lines):
+        st.write(f"{i+1}. De {line['inicio']} a {line['fin']} | Dimensión: {line['dimension']} | Inicio: {line['tipo_inicio']} | Fin: {line['tipo_fin']}")
