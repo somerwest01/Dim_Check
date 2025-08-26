@@ -374,10 +374,18 @@ with col_drawing:
             title="Y (mm)"
         ),
         plot_bgcolor='white',
-        margin=dict(l=50, r=50, t=50, b=50),
-        # Desactivar herramientas de zoom/pan cuando estemos en modo dibujo
-        dragmode='pan' if not st.session_state.drawing_mode else False
+        margin=dict(l=50, r=50, t=50, b=50)
     )
+    
+    # Configurar interacciones según el modo
+    if st.session_state.drawing_mode:
+        fig.update_layout(
+            dragmode=False,
+            scrollZoom=False,
+            doubleClick=False,
+            showTips=False,
+            displayModeBar=False
+        )
     
     # Mostrar el gráfico con eventos de click reales
     selected_points = plotly_events(
@@ -386,51 +394,62 @@ with col_drawing:
         hover_event=False,
         select_event=False,
         override_height=600,
-        override_width=800,
+        override_width="100%",
         key="drawing_canvas"
     )
     
     # Procesar clicks del mouse
     if selected_points and st.session_state.drawing_mode:
-        click_data = selected_points[-1]  # Tomar el último click
-        click_x = click_data['x']
-        click_y = click_data['y']
+        # Obtener el último click válido
+        for point_data in reversed(selected_points):
+            if 'x' in point_data and 'y' in point_data:
+                click_x = float(point_data['x'])
+                click_y = float(point_data['y'])
+                break
+        else:
+            click_x = click_y = None
         
-        if st.session_state.current_line["step"] == "start":
-            # Verificar si hay un punto cercano
-            nearest = find_nearest_point((click_x, click_y))
-            if nearest:
-                st.session_state.current_line["start_point"] = nearest
-                st.session_state.current_line["step"] = "end"
-                st.success(f"✅ Conectado al punto existente: {nearest['name']}")
-                st.rerun()
-            else:
-                st.session_state.current_line["start_x"] = click_x
-                st.session_state.current_line["start_y"] = click_y
-                st.session_state.current_line["step"] = "start_type"
-                st.rerun()
-        
-        elif st.session_state.current_line["step"] == "end":
-            # Verificar si hay un punto cercano
-            nearest = find_nearest_point((click_x, click_y))
-            if nearest:
-                st.session_state.current_line["end_point"] = nearest
-                st.session_state.current_line["step"] = "dimension"
-                st.success(f"✅ Conectado al punto existente: {nearest['name']}")
-                st.rerun()
-            else:
-                st.session_state.current_line["end_x"] = click_x
-                st.session_state.current_line["end_y"] = click_y
-                st.session_state.current_line["step"] = "end_type"
-                st.rerun()
+        if click_x is not None and click_y is not None:
+            if st.session_state.current_line["step"] == "start":
+                # Verificar si hay un punto cercano
+                nearest = find_nearest_point((click_x, click_y))
+                if nearest:
+                    st.session_state.current_line["start_point"] = nearest
+                    st.session_state.current_line["step"] = "end"
+                    st.success(f"✅ Conectado al punto existente: {nearest['name']}")
+                    st.rerun()
+                else:
+                    st.session_state.current_line["start_x"] = click_x
+                    st.session_state.current_line["start_y"] = click_y
+                    st.session_state.current_line["step"] = "start_type"
+                    st.rerun()
+            
+            elif st.session_state.current_line["step"] == "end":
+                # Verificar si hay un punto cercano
+                nearest = find_nearest_point((click_x, click_y))
+                if nearest:
+                    st.session_state.current_line["end_point"] = nearest
+                    st.session_state.current_line["step"] = "dimension"
+                    st.success(f"✅ Conectado al punto existente: {nearest['name']}")
+                    st.rerun()
+                else:
+                    st.session_state.current_line["end_x"] = click_x
+                    st.session_state.current_line["end_y"] = click_y
+                    st.session_state.current_line["step"] = "end_type"
+                    st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Mostrar información de clicks cuando estemos dibujando
     if st.session_state.drawing_mode:
+        st.info("🖱️ **MODO DIBUJO ACTIVO** - Haz clic en el área del gráfico")
         if selected_points:
-            click_data = selected_points[-1]
-            st.info(f"🖱️ Último click en: X={click_data['x']:.1f}, Y={click_data['y']:.1f}")
+            try:
+                click_data = selected_points[-1]
+                if 'x' in click_data and 'y' in click_data:
+                    st.success(f"✅ Click detectado en: X={click_data['x']:.1f}, Y={click_data['y']:.1f}")
+            except:
+                st.warning("⚠️ Click detectado pero con formato incorrecto")
 
 # Barra de estado
 st.markdown('<div class="status-bar">', unsafe_allow_html=True)
