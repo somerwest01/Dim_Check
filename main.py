@@ -22,13 +22,3 @@ canvas_result = st_canvas(
     drawing_mode="line",             # Modo de dibujo: línea recta
     key="canvas",
 )
-
-# Mostrar datos de las líneas dibujadas
-if canvas_result.json_data is not None:
-    st.subheader("Datos de las líneas dibujadas")
-    for obj in canvas_result.json_data.get("objects", []):
-        if obj["type"] == "line":
-            x1, y1 = obj["x1"], obj["y1"]
-            x2, y2 = obj["x2"], obj["y2"]
-            st.write(f"Línea de ({x1}, {y1}) a ({x2}, {y2})")
-
