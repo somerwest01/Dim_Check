@@ -1,4 +1,3 @@
-
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -380,23 +379,38 @@ with col_drawing:
     # Configurar interacciones según el modo
     if st.session_state.drawing_mode:
         fig.update_layout(
-            dragmode=False,
-            scrollZoom=False,
-            doubleClick=False,
-            showTips=False,
-            displayModeBar=False
+            dragmode='pan'
         )
+        # Configurar la barra de herramientas
+        config = {
+            'displayModeBar': False,
+            'scrollZoom': False,
+            'doubleClick': False,
+            'showTips': False
+        }
     
     # Mostrar el gráfico con eventos de click reales
-    selected_points = plotly_events(
-        fig, 
-        click_event=True, 
-        hover_event=False,
-        select_event=False,
-        override_height=600,
-        override_width="100%",
-        key="drawing_canvas"
-    )
+    if st.session_state.drawing_mode:
+        selected_points = plotly_events(
+            fig, 
+            click_event=True, 
+            hover_event=False,
+            select_event=False,
+            override_height=600,
+            override_width="100%",
+            key="drawing_canvas",
+            config={'displayModeBar': False, 'scrollZoom': False}
+        )
+    else:
+        selected_points = plotly_events(
+            fig, 
+            click_event=True, 
+            hover_event=False,
+            select_event=False,
+            override_height=600,
+            override_width="100%",
+            key="drawing_canvas"
+        )
     
     # Procesar clicks del mouse
     if selected_points and st.session_state.drawing_mode:
