@@ -1,7 +1,7 @@
-
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 import math
+import uuid
 
 # Configuración de la página
 st.set_page_config(page_title="Plano de Arnés Eléctrico", layout="wide")
@@ -67,12 +67,12 @@ if canvas_result.json_data is not None:
                 elif connect_point == "end":
                     x2, y2 = closest_point
 
-            # Solicitar dimensión
-            line_id = len(st.session_state.line_objects)
-            dimension = st.sidebar.text_input("Dimensión de la línea (mm)", key=f"dim_{line_id}")
+            # Generar clave única para widgets
+            unique_key = str(uuid.uuid4())
+            dimension = st.sidebar.text_input("Dimensión de la línea (mm)", key=f"dim_{unique_key}")
 
             new_line = {
-                "id": line_id,
+                "id": unique_key,
                 "start": (x1, y1),
                 "end": (x2, y2),
                 "dimension": dimension
@@ -82,3 +82,5 @@ if canvas_result.json_data is not None:
 
     # Actualizar estado con nuevas líneas
     st.session_state.line_objects = new_lines
+print("Archivo main.py corregido para evitar claves duplicadas en widgets.")
+
