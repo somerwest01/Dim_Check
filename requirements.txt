@@ -5,3 +5,5 @@ matplotlib
 openpyxl
 plotly
 streamlit-plotly-events
+streamit-drawable-canvas
+
