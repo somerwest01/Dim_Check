@@ -1,247 +1,440 @@
+
 import streamlit as st
 import plotly.graph_objects as go
+import plotly.express as px
+import math
 import json
 import os
 
-st.set_page_config(layout="wide")
-st.title("🛠️ Plano de Arneses Eléctricos")
+st.set_page_config(page_title="AutoCAD Arneses Eléctricos", layout="wide")
 
-# Espacio para barra de estado
-status = st.empty()
+# Inicializar estado de la aplicación
+if "lines" not in st.session_state:
+    st.session_state.lines = []
+if "points" not in st.session_state:
+    st.session_state.points = []
+if "drawing_mode" not in st.session_state:
+    st.session_state.drawing_mode = False
+if "current_line" not in st.session_state:
+    st.session_state.current_line = None
+if "selected_point" not in st.session_state:
+    st.session_state.selected_point = None
+if "line_counter" not in st.session_state:
+    st.session_state.line_counter = 1
 
-# Datos temporales
-if "ramales" not in st.session_state:
-    st.session_state.ramales = []
+# Funciones auxiliares
+def calculate_distance(point1, point2):
+    """Calcula la distancia entre dos puntos"""
+    return math.sqrt((point2[0] - point1[0])**2 + (point2[1] - point1[1])**2)
 
-if "editing_index" not in st.session_state:
-    st.session_state.editing_index = None
-
-# Funciones para guardar/cargar
-def save_design(filename, ramales):
-    designs_dir = "designs"
-    if not os.path.exists(designs_dir):
-        os.makedirs(designs_dir)
+def find_nearest_point(click_pos, threshold=50):
+    """Encuentra el punto más cercano al click dentro del umbral"""
+    if not st.session_state.points:
+        return None
     
-    with open(f"{designs_dir}/{filename}.json", "w") as f:
-        json.dump(ramales, f, indent=2)
-
-def load_design(filename):
-    try:
-        with open(f"designs/{filename}", "r") as f:
-            return json.load(f)
-    except:
-        return []
-
-def get_saved_designs():
-    designs_dir = "designs"
-    if not os.path.exists(designs_dir):
-        return []
-    return [f for f in os.listdir(designs_dir) if f.endswith('.json')]
-
-# Barra lateral principal
-with st.sidebar:
-    st.header("🎛️ Panel de Control")
+    min_distance = float('inf')
+    nearest_point = None
     
-    # Sección de guardado/carga
-    st.subheader("💾 Guardar/Cargar Diseño")
+    for point in st.session_state.points:
+        distance = calculate_distance(click_pos, (point['x'], point['y']))
+        if distance < threshold and distance < min_distance:
+            min_distance = distance
+            nearest_point = point
+    
+    return nearest_point
+
+def add_point(x, y, point_type, name):
+    """Agregar un nuevo punto"""
+    point = {
+        'id': len(st.session_state.points),
+        'x': x,
+        'y': y,
+        'type': point_type,
+        'name': name
+    }
+    st.session_state.points.append(point)
+    return point
+
+def add_line(start_point, end_point, dimension):
+    """Agregar una nueva línea"""
+    line = {
+        'id': st.session_state.line_counter,
+        'start': start_point,
+        'end': end_point,
+        'dimension': dimension,
+        'length': calculate_distance((start_point['x'], start_point['y']), (end_point['x'], end_point['y']))
+    }
+    st.session_state.lines.append(line)
+    st.session_state.line_counter += 1
+    return line
+
+def get_connected_lines(point_id):
+    """Obtiene todas las líneas conectadas a un punto"""
+    connected = []
+    for line in st.session_state.lines:
+        if line['start']['id'] == point_id or line['end']['id'] == point_id:
+            connected.append(line)
+    return connected
+
+def calculate_circuit_length(start_point_id):
+    """Calcula la longitud total de un circuito"""
+    visited = set()
+    total_length = 0
+    
+    def dfs(point_id):
+        nonlocal total_length
+        if point_id in visited:
+            return
+        visited.add(point_id)
+        
+        connected_lines = get_connected_lines(point_id)
+        for line in connected_lines:
+            if line['id'] not in visited:
+                total_length += line['dimension']
+                next_point_id = line['end']['id'] if line['start']['id'] == point_id else line['start']['id']
+                dfs(next_point_id)
+    
+    dfs(start_point_id)
+    return total_length
+
+# CSS personalizado
+st.markdown("""
+<style>
+    .toolbar {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    .drawing-area {
+        border: 2px solid #ddd;
+        border-radius: 10px;
+        background-color: white;
+    }
+    .status-bar {
+        background-color: #e1e5f2;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Título principal
+st.title("🚗 AutoCAD - Diseño de Arneses Eléctricos")
+
+# Crear layout principal
+col_toolbar, col_drawing = st.columns([1, 3])
+
+# Panel de herramientas (izquierda)
+with col_toolbar:
+    st.markdown('<div class="toolbar">', unsafe_allow_html=True)
+    st.header("🛠️ Herramientas")
+    
+    # Botón principal para agregar línea
+    if st.button("➕ Agregar Nueva Línea", use_container_width=True, type="primary"):
+        st.session_state.drawing_mode = True
+        st.session_state.current_line = {"step": "start"}
+        st.rerun()
+    
+    # Estado actual
+    if st.session_state.drawing_mode:
+        if st.session_state.current_line["step"] == "start":
+            st.info("🎯 **Paso 1:** Haz clic en el área de dibujo para definir el punto de inicio")
+        elif st.session_state.current_line["step"] == "end":
+            st.info("🎯 **Paso 2:** Haz clic para definir el punto final")
+        elif st.session_state.current_line["step"] == "dimension":
+            st.info("🎯 **Paso 3:** Ingresa la dimensión de la línea")
+    else:
+        st.success("✅ Listo para dibujar. Presiona 'Agregar Nueva Línea' para comenzar.")
+    
+    st.divider()
+    
+    # Formularios flotantes simulados
+    if st.session_state.drawing_mode:
+        if st.session_state.current_line["step"] == "start_type":
+            st.subheader("🔍 Tipo de Punto de Inicio")
+            start_type = st.selectbox("Selecciona el tipo:", ["Item", "BRK", "SPL"], key="start_type_select")
+            start_name = st.text_input("Nombre del punto:", value=f"{start_type}_{len(st.session_state.points)+1}")
+            
+            if st.button("✅ Confirmar Inicio"):
+                # Crear punto de inicio
+                start_point = add_point(
+                    st.session_state.current_line["start_x"],
+                    st.session_state.current_line["start_y"],
+                    start_type,
+                    start_name
+                )
+                st.session_state.current_line["start_point"] = start_point
+                st.session_state.current_line["step"] = "end"
+                st.rerun()
+        
+        elif st.session_state.current_line["step"] == "end_type":
+            st.subheader("🔍 Tipo de Punto Final")
+            end_type = st.selectbox("Selecciona el tipo:", ["Item", "BRK", "SPL"], key="end_type_select")
+            end_name = st.text_input("Nombre del punto:", value=f"{end_type}_{len(st.session_state.points)+1}")
+            
+            if st.button("✅ Confirmar Final"):
+                # Crear punto final
+                end_point = add_point(
+                    st.session_state.current_line["end_x"],
+                    st.session_state.current_line["end_y"],
+                    end_type,
+                    end_name
+                )
+                st.session_state.current_line["end_point"] = end_point
+                st.session_state.current_line["step"] = "dimension"
+                st.rerun()
+        
+        elif st.session_state.current_line["step"] == "dimension":
+            st.subheader("📏 Dimensión de la Línea")
+            
+            # Calcular distancia automáticamente como sugerencia
+            if "start_point" in st.session_state.current_line and "end_point" in st.session_state.current_line:
+                auto_distance = calculate_distance(
+                    (st.session_state.current_line["start_point"]["x"], st.session_state.current_line["start_point"]["y"]),
+                    (st.session_state.current_line["end_point"]["x"], st.session_state.current_line["end_point"]["y"])
+                )
+                st.info(f"📐 Distancia calculada: {auto_distance:.1f} píxeles")
+            
+            dimension = st.number_input("Dimensión (mm):", min_value=0.1, value=100.0, step=0.1)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Crear Línea"):
+                    # Crear la línea
+                    line = add_line(
+                        st.session_state.current_line["start_point"],
+                        st.session_state.current_line["end_point"],
+                        dimension
+                    )
+                    
+                    # Resetear modo de dibujo
+                    st.session_state.drawing_mode = False
+                    st.session_state.current_line = None
+                    st.success(f"✅ Línea creada: {dimension} mm")
+                    st.rerun()
+            
+            with col2:
+                if st.button("❌ Cancelar"):
+                    st.session_state.drawing_mode = False
+                    st.session_state.current_line = None
+                    st.rerun()
+    
+    st.divider()
+    
+    # Información del proyecto
+    st.subheader("📊 Estadísticas del Proyecto")
+    st.metric("Total de Líneas", len(st.session_state.lines))
+    st.metric("Total de Puntos", len(st.session_state.points))
+    
+    if st.session_state.lines:
+        total_length = sum(line['dimension'] for line in st.session_state.lines)
+        st.metric("Longitud Total", f"{total_length:.1f} mm")
+    
+    # Lista de líneas
+    if st.session_state.lines:
+        st.subheader("📋 Lista de Líneas")
+        for i, line in enumerate(st.session_state.lines):
+            with st.expander(f"Línea {line['id']}: {line['dimension']} mm"):
+                st.write(f"**Inicio:** {line['start']['name']} ({line['start']['type']})")
+                st.write(f"**Final:** {line['end']['name']} ({line['end']['type']})")
+                st.write(f"**Dimensión:** {line['dimension']} mm")
+                
+                if st.button(f"🗑️ Eliminar", key=f"delete_{line['id']}"):
+                    st.session_state.lines = [l for l in st.session_state.lines if l['id'] != line['id']]
+                    st.rerun()
+    
+    # Botones de acción
+    st.divider()
     
     col1, col2 = st.columns(2)
     with col1:
-        save_name = st.text_input("Nombre del diseño", placeholder="mi_arnes")
         if st.button("💾 Guardar", use_container_width=True):
-            if save_name:
-                save_design(save_name, st.session_state.ramales)
-                status.success(f"Diseño guardado como: {save_name}.json")
-            else:
-                status.error("Ingresa un nombre para el diseño")
+            project_data = {
+                'lines': st.session_state.lines,
+                'points': st.session_state.points,
+                'counter': st.session_state.line_counter
+            }
+            
+            if not os.path.exists('projects'):
+                os.makedirs('projects')
+            
+            with open('projects/current_project.json', 'w') as f:
+                json.dump(project_data, f, indent=2)
+            st.success("💾 Proyecto guardado")
     
     with col2:
-        saved_designs = get_saved_designs()
-        if saved_designs:
-            selected_design = st.selectbox("Diseños guardados", saved_designs)
-            if st.button("📂 Cargar", use_container_width=True):
-                loaded_ramales = load_design(selected_design)
-                st.session_state.ramales = loaded_ramales
-                st.session_state.editing_index = None
-                status.success(f"Diseño cargado: {selected_design}")
+        if st.button("📂 Cargar", use_container_width=True):
+            try:
+                with open('projects/current_project.json', 'r') as f:
+                    project_data = json.load(f)
+                
+                st.session_state.lines = project_data.get('lines', [])
+                st.session_state.points = project_data.get('points', [])
+                st.session_state.line_counter = project_data.get('counter', 1)
+                st.success("📂 Proyecto cargado")
                 st.rerun()
-
-    if st.button("🗑️ Nuevo Diseño", use_container_width=True):
-        st.session_state.ramales = []
-        st.session_state.editing_index = None
-        status.info("Nuevo diseño iniciado")
+            except:
+                st.error("❌ No se pudo cargar el proyecto")
+    
+    if st.button("🗑️ Limpiar Todo", use_container_width=True):
+        st.session_state.lines = []
+        st.session_state.points = []
+        st.session_state.line_counter = 1
+        st.session_state.drawing_mode = False
+        st.session_state.current_line = None
         st.rerun()
-
-    st.divider()
-
-    # Sección para agregar/editar ramal
-    if st.session_state.editing_index is not None:
-        st.subheader("✏️ Editar Ramal")
-        ramal_actual = st.session_state.ramales[st.session_state.editing_index]
-        
-        origen = st.text_input("Nombre del Conector (origen)", value=ramal_actual["origen"])
-        tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"], 
-                                   index=["SPL", "BRK", "Conector"].index(ramal_actual["tipo"]))
-        nombre_destino = st.text_input("Nombre del destino", value=ramal_actual["destino"])
-        x1 = st.number_input("X origen", value=ramal_actual["coords"][0][0])
-        y1 = st.number_input("Y origen", value=ramal_actual["coords"][0][1])
-        x2 = st.number_input("X destino", value=ramal_actual["coords"][1][0])
-        y2 = st.number_input("Y destino", value=ramal_actual["coords"][1][1])
-        dimension = st.number_input("Dimensión (mm)", value=ramal_actual["dimension"])
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ Guardar cambios", use_container_width=True):
-                st.session_state.ramales[st.session_state.editing_index] = {
-                    "origen": origen,
-                    "destino": nombre_destino if tipo_destino != "BRK" else "BRK",
-                    "tipo": tipo_destino,
-                    "dimension": dimension,
-                    "coords": [(x1, y1), (x2, y2)]
-                }
-                st.session_state.editing_index = None
-                status.success("Ramal actualizado correctamente")
-                st.rerun()
-        
-        with col2:
-            if st.button("❌ Cancelar", use_container_width=True):
-                st.session_state.editing_index = None
-                st.rerun()
     
-    else:
-        st.subheader("➕ Agregar Ramal")
-        origen = st.text_input("Nombre del Conector (origen)", "C1")
-        tipo_destino = st.selectbox("Tipo de destino", ["SPL", "BRK", "Conector"])
-        nombre_destino = st.text_input("Nombre del destino", "SPL1" if tipo_destino == "SPL" else "C2")
-        x1 = st.number_input("X origen", value=100)
-        y1 = st.number_input("Y origen", value=300)
-        x2 = st.number_input("X destino", value=300)
-        y2 = st.number_input("Y destino", value=300)
-        dimension = st.number_input("Dimensión (mm)", value=100)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        if st.button("➕ Agregar línea", use_container_width=True):
-            st.session_state.ramales.append({
-                "origen": origen,
-                "destino": nombre_destino if tipo_destino != "BRK" else "BRK",
-                "tipo": tipo_destino,
-                "dimension": dimension,
-                "coords": [(x1, y1), (x2, y2)]
-            })
-            status.success(f"Línea agregada: {origen} → {nombre_destino} ({dimension} mm)")
-            st.rerun()
-
-# Panel principal con dos columnas
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.subheader("📐 Plano del Arnés")
+# Área de dibujo (derecha)
+with col_drawing:
+    st.markdown('<div class="drawing-area">', unsafe_allow_html=True)
+    st.subheader("📐 Área de Dibujo")
     
-    # Dibujo del plano
+    # Crear figura de Plotly
     fig = go.Figure()
-
-    # Dibujar cada ramal
-    for i, ramal in enumerate(st.session_state.ramales):
-        x1, y1 = ramal["coords"][0]
-        x2, y2 = ramal["coords"][1]
-
-        # Color de línea diferente si está siendo editado
-        line_color = "red" if i == st.session_state.editing_index else "gray"
-        line_width = 3 if i == st.session_state.editing_index else 2
-
+    
+    # Dibujar líneas existentes
+    for line in st.session_state.lines:
+        start_x, start_y = line['start']['x'], line['start']['y']
+        end_x, end_y = line['end']['x'], line['end']['y']
+        
         # Línea
         fig.add_trace(go.Scatter(
-            x=[x1, x2], y=[y1, y2],
-            mode="lines+text",
-            line=dict(color=line_color, width=line_width),
-            text=[None, f'{ramal["dimension"]} mm'],
-            textposition="top center",
-            hoverinfo="none",
-            showlegend=False
+            x=[start_x, end_x],
+            y=[start_y, end_y],
+            mode='lines',
+            line=dict(color='black', width=3),
+            showlegend=False,
+            hoverinfo='none'
         ))
-
-        # Nodo destino
-        if ramal["tipo"] == "Conector":
-            fig.add_trace(go.Scatter(
-                x=[x2], y=[y2],
-                mode="markers+text",
-                marker=dict(symbol="square", size=14, color="blue"),
-                text=[ramal["destino"]],
-                textposition="bottom center",
-                showlegend=False
-            ))
-        elif ramal["tipo"] == "SPL":
-            fig.add_trace(go.Scatter(
-                x=[x2], y=[y2],
-                mode="markers+text",
-                marker=dict(symbol="triangle-up", size=14, color="green"),
-                text=[ramal["destino"]],
-                textposition="bottom center",
-                showlegend=False
-            ))
-        elif ramal["tipo"] == "BRK":
-            fig.add_trace(go.Scatter(
-                x=[x2], y=[y2],
-                mode="markers",
-                marker=dict(symbol="circle", size=14, color="black"),
-                showlegend=False
-            ))
-
-        # Nodo origen (siempre Conector)
+        
+        # Texto de dimensión en el medio de la línea
+        mid_x = (start_x + end_x) / 2
+        mid_y = (start_y + end_y) / 2
+        
         fig.add_trace(go.Scatter(
-            x=[x1], y=[y1],
-            mode="markers+text",
-            marker=dict(symbol="square", size=14, color="blue"),
-            text=[ramal["origen"]],
-            textposition="bottom center",
-            showlegend=False
+            x=[mid_x],
+            y=[mid_y],
+            mode='text',
+            text=[f"{line['dimension']} mm"],
+            textposition='middle center',
+            textfont=dict(size=12, color='blue'),
+            showlegend=False,
+            hoverinfo='none'
         ))
-
+    
+    # Dibujar puntos
+    for point in st.session_state.points:
+        if point['type'] == 'Item':
+            # Cuadrado
+            symbol = 'square'
+            color = 'blue'
+        elif point['type'] == 'BRK':
+            # Círculo relleno negro
+            symbol = 'circle'
+            color = 'black'
+        elif point['type'] == 'SPL':
+            # Triángulo
+            symbol = 'triangle-up'
+            color = 'green'
+        
+        fig.add_trace(go.Scatter(
+            x=[point['x']],
+            y=[point['y']],
+            mode='markers+text',
+            marker=dict(symbol=symbol, size=15, color=color),
+            text=[point['name']],
+            textposition='bottom center',
+            textfont=dict(size=10),
+            showlegend=False,
+            hoverinfo='text',
+            hovertext=f"{point['name']} ({point['type']})"
+        ))
+    
+    # Configurar el layout
     fig.update_layout(
         width=800,
         height=600,
-        margin=dict(t=20, b=20),
-        showlegend=False,
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False)
+        xaxis=dict(
+            range=[0, 1000],
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgray',
+            title="X (mm)"
+        ),
+        yaxis=dict(
+            range=[0, 600],
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgray',
+            title="Y (mm)"
+        ),
+        plot_bgcolor='white',
+        margin=dict(l=50, r=50, t=50, b=50)
     )
+    
+    # Mostrar el gráfico con eventos de click
+    event = st.plotly_chart(fig, use_container_width=True, key="drawing_area")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Simular eventos de click (en una implementación real necesitarías usar streamlit-plotly-events)
+    if st.session_state.drawing_mode:
+        st.markdown("### 🖱️ Simulador de Clicks")
+        st.info("En esta versión demo, usa los controles debajo para simular clicks en el área de dibujo:")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            click_x = st.number_input("Coordenada X:", min_value=0, max_value=1000, value=200, step=10)
+        with col2:
+            click_y = st.number_input("Coordenada Y:", min_value=0, max_value=600, value=300, step=10)
+        
+        if st.button("🖱️ Simular Click"):
+            if st.session_state.current_line["step"] == "start":
+                # Verificar si hay un punto cercano
+                nearest = find_nearest_point((click_x, click_y))
+                if nearest:
+                    st.session_state.current_line["start_point"] = nearest
+                    st.session_state.current_line["step"] = "end"
+                    st.info(f"✅ Conectado al punto existente: {nearest['name']}")
+                else:
+                    st.session_state.current_line["start_x"] = click_x
+                    st.session_state.current_line["start_y"] = click_y
+                    st.session_state.current_line["step"] = "start_type"
+                st.rerun()
+            
+            elif st.session_state.current_line["step"] == "end":
+                # Verificar si hay un punto cercano
+                nearest = find_nearest_point((click_x, click_y))
+                if nearest:
+                    st.session_state.current_line["end_point"] = nearest
+                    st.session_state.current_line["step"] = "dimension"
+                    st.info(f"✅ Conectado al punto existente: {nearest['name']}")
+                else:
+                    st.session_state.current_line["end_x"] = click_x
+                    st.session_state.current_line["end_y"] = click_y
+                    st.session_state.current_line["step"] = "end_type"
+                st.rerun()
 
-    st.plotly_chart(fig, use_container_width=True)
+# Barra de estado
+st.markdown('<div class="status-bar">', unsafe_allow_html=True)
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.session_state.drawing_mode:
+        st.write("🟢 **Modo Dibujo Activo**")
+    else:
+        st.write("⚪ **Modo Vista**")
 
 with col2:
-    st.subheader("📋 Lista de Ramales")
-    
-    if st.session_state.ramales:
-        for i, ramal in enumerate(st.session_state.ramales):
-            with st.container():
-                # Indicador visual si está siendo editado
-                if i == st.session_state.editing_index:
-                    st.markdown("🔴 **EDITANDO**")
-                
-                st.write(f"**{i+1}.** {ramal['origen']} → {ramal['destino']}")
-                st.write(f"📏 {ramal['dimension']} mm | 🔧 {ramal['tipo']}")
-                
-                col_edit, col_delete = st.columns(2)
-                
-                with col_edit:
-                    if st.button("✏️", key=f"edit_{i}", help="Editar", use_container_width=True):
-                        st.session_state.editing_index = i
-                        st.rerun()
-                
-                with col_delete:
-                    if st.button("🗑️", key=f"delete_{i}", help="Eliminar", use_container_width=True):
-                        st.session_state.ramales.pop(i)
-                        if st.session_state.editing_index == i:
-                            st.session_state.editing_index = None
-                        elif st.session_state.editing_index is not None and st.session_state.editing_index > i:
-                            st.session_state.editing_index -= 1
-                        status.warning(f"Ramal eliminado")
-                        st.rerun()
-                
-                st.divider()
-    else:
-        st.info("No hay ramales agregados aún")
+    st.write(f"📏 **Líneas:** {len(st.session_state.lines)}")
 
-# Información del diseño
-if st.session_state.ramales:
-    st.info(f"💡 **Resumen:** {len(st.session_state.ramales)} ramales | "
-            f"Total: {sum(r['dimension'] for r in st.session_state.ramales)} mm")
+with col3:
+    if st.session_state.lines:
+        total = sum(line['dimension'] for line in st.session_state.lines)
+        st.write(f"📐 **Total:** {total:.1f} mm")
+
+st.markdown('</div>', unsafe_allow_html=True)
